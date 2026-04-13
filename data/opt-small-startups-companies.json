@@ -1,0 +1,22 @@
+[
+  { "company": "Pinecone", "domain": "pinecone.io", "h1bSignal": "low" },
+  { "company": "MotherDuck", "domain": "motherduck.com", "h1bSignal": "low" },
+  { "company": "Hex", "domain": "hex.tech", "h1bSignal": "low" },
+  { "company": "Census", "domain": "getcensus.com", "h1bSignal": "low" },
+  { "company": "Hightouch", "domain": "hightouch.com", "h1bSignal": "low" },
+  { "company": "Convex", "domain": "convex.dev", "h1bSignal": "low" },
+  { "company": "Linear", "domain": "linear.app", "h1bSignal": "low" },
+  { "company": "Qdrant", "domain": "qdrant.tech", "h1bSignal": "low" },
+  { "company": "Tecton", "domain": "tecton.ai", "h1bSignal": "low" },
+  { "company": "Arize AI", "domain": "arize.com", "h1bSignal": "low" },
+  { "company": "Prefect", "domain": "prefect.io", "h1bSignal": "low" },
+  { "company": "Dagster Labs", "domain": "dagster.io", "h1bSignal": "low" },
+  { "company": "Immuta", "domain": "immuta.com", "h1bSignal": "low" },
+  { "company": "Ascend.io", "domain": "ascend.io", "h1bSignal": "low" },
+  { "company": "Rasa", "domain": "rasa.com", "h1bSignal": "low" },
+  { "company": "PostHog", "domain": "posthog.com", "h1bSignal": "low" },
+  { "company": "Render", "domain": "render.com", "h1bSignal": "low" },
+  { "company": "Nylas", "domain": "nylas.com", "h1bSignal": "low" },
+  { "company": "Weights & Biases", "domain": "wandb.ai", "h1bSignal": "low" },
+  { "company": "Shift5", "domain": "shift5.io", "h1bSignal": "low" }
+]
