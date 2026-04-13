@@ -119,6 +119,71 @@ function fitScore(company, person) {
   );
 }
 
+function emailDomainFromAddress(email) {
+  const e = (email || "").trim().toLowerCase();
+  const i = e.indexOf("@");
+  if (i < 0) return "";
+  return e.slice(i + 1).replace(/^www\./, "");
+}
+
+async function loadRecruitingFirmRules() {
+  const filePath = path.resolve(process.env.RECRUITING_BLOCKLIST_FILE || "data/recruiting-firm-blocklist.json");
+  try {
+    const raw = await readFile(filePath, "utf8");
+    const data = JSON.parse(raw);
+    const domains = new Set((data.domains || []).map((d) => normalize(d).replace(/^www\./, "")));
+    const organizationNameContains = (data.organizationNameContains || []).map((s) => normalize(s));
+    return { domains, organizationNameContains };
+  } catch {
+    return { domains: new Set(), organizationNameContains: [] };
+  }
+}
+
+/**
+ * Classify whether a row is tied to a staffing / RPO / recruiting marketplace (see blocklist JSON).
+ * Does not drop rows — use splitOutputs() to route to separate files.
+ */
+function classifyRecruitingAgencyLead(lead, rules) {
+  const reasons = [];
+  const targetDomain = normalize(lead.domain || "").replace(/^www\./, "");
+  if (targetDomain && rules.domains.has(targetDomain)) reasons.push("target_company_domain");
+
+  const companyName = normalize(lead.company || "");
+  for (const frag of rules.organizationNameContains) {
+    if (frag && companyName.includes(frag)) {
+      reasons.push("target_company_name");
+      break;
+    }
+  }
+
+  const mailDomain = emailDomainFromAddress(lead.email);
+  if (mailDomain && rules.domains.has(mailDomain)) reasons.push("contact_email_domain");
+
+  const orgNm = normalize(lead.organizationName || "");
+  for (const frag of rules.organizationNameContains) {
+    if (frag && orgNm.includes(frag)) {
+      reasons.push("employer_org_name");
+      break;
+    }
+  }
+
+  const unique = [...new Set(reasons)];
+  return { isAgency: unique.length > 0, reasons: unique };
+}
+
+async function writeLeadOutputs(employerLeads, agencyRows, outputBasename, recruitingBasename) {
+  await mkdir(OUTPUT_DIR, { recursive: true });
+  await writeFile(path.join(OUTPUT_DIR, `${outputBasename}.json`), JSON.stringify(employerLeads, null, 2), "utf8");
+  await writeFile(path.join(OUTPUT_DIR, `${outputBasename}.csv`), toCsv(employerLeads), "utf8");
+
+  await writeFile(path.join(OUTPUT_DIR, `${recruitingBasename}.json`), JSON.stringify(agencyRows, null, 2), "utf8");
+  await writeFile(
+    path.join(OUTPUT_DIR, `${recruitingBasename}.csv`),
+    agencyRows.length ? toCsv(agencyRows) : "",
+    "utf8"
+  );
+}
+
 function parseProviders(hunterKey, apolloKey) {
   const raw = (process.env.PROVIDERS || "").toLowerCase().trim();
   if (raw) {
@@ -400,6 +465,7 @@ async function main() {
   const outputBasename =
     process.env.OUTPUT_BASENAME ||
     (apolloApiKey ? "technical-recruiter-leads" : "h1b-recruiter-leads");
+  const recruitingOutputBasename = process.env.RECRUITING_OUTPUT_BASENAME || "recruiting-firm-leads";
 
   const requirePersonEmails = (process.env.REQUIRE_PERSON_EMAILS || "true").toLowerCase() !== "false";
   const leadTarget = Number.parseInt(process.env.LEADS_TARGET || "40", 10);
@@ -441,11 +507,24 @@ async function main() {
       }
     }
     const dedupedAlias = Array.from(new Map(allLeads.map((lead) => [lead.email.toLowerCase(), lead])).values());
-    const rankedAlias = dedupedAlias.sort((a, b) => b.score - a.score).slice(0, leadTarget);
-    await mkdir(OUTPUT_DIR, { recursive: true });
-    await writeFile(path.join(OUTPUT_DIR, `${outputBasename}.json`), JSON.stringify(rankedAlias, null, 2), "utf8");
-    await writeFile(path.join(OUTPUT_DIR, `${outputBasename}.csv`), toCsv(rankedAlias), "utf8");
-    console.log(`No API keys — generated ${rankedAlias.length} alias leads → output/${outputBasename}.csv`);
+    const withEmailAlias = dedupedAlias.filter((lead) => (lead.email || "").trim().length > 0);
+    const rulesAlias = await loadRecruitingFirmRules();
+    const classifiedAlias = withEmailAlias.map((lead) => {
+      const { isAgency, reasons } = classifyRecruitingAgencyLead(lead, rulesAlias);
+      return { lead, isAgency, reasonStr: reasons.join("; ") };
+    });
+    const employerAlias = classifiedAlias.filter((x) => !x.isAgency).map((x) => x.lead);
+    const agencyAlias = classifiedAlias
+      .filter((x) => x.isAgency)
+      .map((x) => ({
+        ...x.lead,
+        recruitingAgencyMatch: "yes",
+        recruitingAgencyReason: x.reasonStr
+      }));
+    const rankedAlias = employerAlias.sort((a, b) => b.score - a.score).slice(0, leadTarget);
+    await writeLeadOutputs(rankedAlias, agencyAlias, outputBasename, recruitingOutputBasename);
+    console.log(`No API keys — ${rankedAlias.length} employer alias leads → output/${outputBasename}.csv`);
+    console.log(`Split ${agencyAlias.length} staffing/RPO alias leads → output/${recruitingOutputBasename}.csv`);
     return;
   }
 
@@ -472,16 +551,30 @@ async function main() {
 
   const deduped = Array.from(new Map(allLeads.map((lead) => [dedupeKey(lead), lead])).values());
   const withEmail = deduped.filter((lead) => (lead.email || "").trim().length > 0);
-  const ranked = withEmail.sort((a, b) => b.score - a.score).slice(0, leadTarget);
+  const rules = await loadRecruitingFirmRules();
+  const classified = withEmail.map((lead) => {
+    const { isAgency, reasons } = classifyRecruitingAgencyLead(lead, rules);
+    return { lead, isAgency, reasonStr: reasons.join("; ") };
+  });
+  const employerRaw = classified.filter((x) => !x.isAgency).map((x) => x.lead);
+  const agencyRows = classified
+    .filter((x) => x.isAgency)
+    .map((x) => ({
+      ...x.lead,
+      recruitingAgencyMatch: "yes",
+      recruitingAgencyReason: x.reasonStr
+    }));
 
-  await mkdir(OUTPUT_DIR, { recursive: true });
-  await writeFile(path.join(OUTPUT_DIR, `${outputBasename}.json`), JSON.stringify(ranked, null, 2), "utf8");
-  await writeFile(path.join(OUTPUT_DIR, `${outputBasename}.csv`), toCsv(ranked), "utf8");
+  const ranked = employerRaw.sort((a, b) => b.score - a.score).slice(0, leadTarget);
+  const rankedAgency = agencyRows.sort((a, b) => b.score - a.score);
+
+  await writeLeadOutputs(ranked, rankedAgency, outputBasename, recruitingOutputBasename);
 
   if (!hunterApiKey && !apolloApiKey && requirePersonEmails) {
     console.log("No API keys found. Generated alias emails only.");
   }
-  console.log(`Generated ${ranked.length} leads → output/${outputBasename}.csv`);
+  console.log(`Generated ${ranked.length} employer leads → output/${outputBasename}.csv`);
+  console.log(`Split ${rankedAgency.length} staffing/RPO leads → output/${recruitingOutputBasename}.csv`);
 }
 
 main().catch((error) => {
