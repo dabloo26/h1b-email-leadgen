@@ -9,9 +9,23 @@ const ROLE_KEYWORDS = [
   "recruiter",
   "talent",
   "hiring manager",
+  "people partner",
+  "people ops",
   "engineering manager",
   "data science manager",
-  "analytics manager"
+  "analytics manager",
+  "head of talent",
+  "technical recruiter"
+];
+const ALT_ROLE_KEYWORDS = [
+  "director",
+  "manager",
+  "head",
+  "vp",
+  "engineering",
+  "data",
+  "analytics",
+  "machine learning"
 ];
 
 function normalize(value) {
@@ -39,6 +53,11 @@ async function loadEnv() {
 function hasRelevantRole(position) {
   const title = normalize(position);
   return ROLE_KEYWORDS.some((term) => title.includes(term));
+}
+
+function hasAlternativeRole(position) {
+  const title = normalize(position);
+  return ALT_ROLE_KEYWORDS.some((term) => title.includes(term));
 }
 
 function signalScore(signal) {
@@ -74,7 +93,8 @@ function fitScore(company, person) {
 async function domainSearch(domain, apiKey) {
   const url = new URL("https://api.hunter.io/v2/domain-search");
   url.searchParams.set("domain", domain);
-  url.searchParams.set("limit", "100");
+  // Free/lower Hunter tiers reject high limits with HTTP 400.
+  url.searchParams.set("limit", "10");
   url.searchParams.set("api_key", apiKey);
 
   const response = await fetch(url);
@@ -94,7 +114,9 @@ function toCsv(rows) {
 async function main() {
   await loadEnv();
   const apiKey = process.env.HUNTER_API_KEY;
+  const requirePersonEmails = (process.env.REQUIRE_PERSON_EMAILS || "true").toLowerCase() !== "false";
   const leadTarget = Number.parseInt(process.env.LEADS_TARGET || "40", 10);
+  const maxPerCompany = Number.parseInt(process.env.MAX_PER_COMPANY || "1", 10);
   const companies = JSON.parse(await readFile(COMPANY_FILE, "utf8"));
   const allLeads = [];
 
@@ -102,9 +124,10 @@ async function main() {
     if (apiKey) {
       try {
         const contacts = await domainSearch(company.domain, apiKey);
+        const strictMatches = [];
+        const altMatches = [];
         for (const contact of contacts) {
-          if (!hasRelevantRole(contact.position)) continue;
-          allLeads.push({
+          const candidate = {
             company: company.company,
             domain: company.domain,
             h1bSignal: company.h1bSignal,
@@ -114,7 +137,38 @@ async function main() {
             verificationStatus: contact.verification?.status || "unknown",
             source: "hunter-domain-search",
             score: fitScore(company, contact)
-          });
+          };
+          if (hasRelevantRole(contact.position)) {
+            strictMatches.push(candidate);
+            continue;
+          }
+          if (hasAlternativeRole(contact.position)) {
+            altMatches.push(candidate);
+          }
+        }
+
+        const selected = strictMatches.length > 0 ? strictMatches : altMatches;
+        selected
+          .sort((a, b) => b.score - a.score)
+          .slice(0, maxPerCompany)
+          .forEach((lead) => allLeads.push(lead));
+
+        if (selected.length === 0 && contacts.length > 0) {
+          // Final fallback: keep a single best visible company contact (still person-level).
+          const fallback = contacts
+            .map((contact) => ({
+              company: company.company,
+              domain: company.domain,
+              h1bSignal: company.h1bSignal,
+              fullName: `${contact.first_name || ""} ${contact.last_name || ""}`.trim(),
+              title: contact.position || "",
+              email: contact.value || "",
+              verificationStatus: contact.verification?.status || "unknown",
+              source: "hunter-domain-search-fallback",
+              score: fitScore(company, contact)
+            }))
+            .sort((a, b) => b.score - a.score)[0];
+          if (fallback) allLeads.push(fallback);
         }
       } catch (error) {
         console.warn(`[warn] ${company.company}: ${error.message}`);
@@ -143,7 +197,10 @@ async function main() {
   await writeFile(path.join(OUTPUT_DIR, "h1b-recruiter-leads.json"), JSON.stringify(ranked, null, 2), "utf8");
   await writeFile(path.join(OUTPUT_DIR, "h1b-recruiter-leads.csv"), toCsv(ranked), "utf8");
 
-  if (!apiKey) {
+  if (!apiKey && requirePersonEmails) {
+    console.log("No HUNTER_API_KEY found. Could not fetch person-level emails; generated role aliases only.");
+    console.log("Add HUNTER_API_KEY in .env to fetch real recruiter/manager addresses.");
+  } else if (!apiKey) {
     console.log("No HUNTER_API_KEY found. Generated alias emails.");
   }
   console.log(`Generated ${ranked.length} leads.`);
