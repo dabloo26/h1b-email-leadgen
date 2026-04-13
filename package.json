@@ -1,0 +1,9 @@
+{
+  "name": "h1b-email-leadgen",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "leads:generate": "node src/generate-leads.mjs"
+  }
+}

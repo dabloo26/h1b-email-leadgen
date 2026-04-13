@@ -1,0 +1,17 @@
+[
+  { "company": "ServiceNow", "domain": "servicenow.com", "h1bSignal": "high" },
+  { "company": "Databricks", "domain": "databricks.com", "h1bSignal": "high" },
+  { "company": "Snowflake", "domain": "snowflake.com", "h1bSignal": "high" },
+  { "company": "Atlassian", "domain": "atlassian.com", "h1bSignal": "high" },
+  { "company": "MongoDB", "domain": "mongodb.com", "h1bSignal": "high" },
+  { "company": "Cloudflare", "domain": "cloudflare.com", "h1bSignal": "medium" },
+  { "company": "Confluent", "domain": "confluent.io", "h1bSignal": "medium" },
+  { "company": "Elastic", "domain": "elastic.co", "h1bSignal": "medium" },
+  { "company": "HashiCorp", "domain": "hashicorp.com", "h1bSignal": "medium" },
+  { "company": "HubSpot", "domain": "hubspot.com", "h1bSignal": "medium" },
+  { "company": "Samsara", "domain": "samsara.com", "h1bSignal": "medium" },
+  { "company": "Datadog", "domain": "datadoghq.com", "h1bSignal": "high" },
+  { "company": "Okta", "domain": "okta.com", "h1bSignal": "medium" },
+  { "company": "PagerDuty", "domain": "pagerduty.com", "h1bSignal": "medium" },
+  { "company": "Twilio", "domain": "twilio.com", "h1bSignal": "medium" }
+]
