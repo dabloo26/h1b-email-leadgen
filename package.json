@@ -5,6 +5,11 @@
   "type": "module",
   "scripts": {
     "leads:generate": "node src/generate-leads.mjs",
-    "leads:technical": "OUTPUT_BASENAME=technical-recruiter-leads node src/generate-leads.mjs"
+    "leads:technical": "OUTPUT_BASENAME=technical-recruiter-leads node src/generate-leads.mjs",
+    "jobs:enrich": "node src/enrich-jobs-from-leads.mjs"
+  },
+  "dependencies": {
+    "cheerio": "^1.2.0",
+    "xlsx": "^0.18.5"
   }
 }
